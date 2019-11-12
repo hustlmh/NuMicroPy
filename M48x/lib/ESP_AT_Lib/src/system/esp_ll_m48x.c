@@ -174,8 +174,23 @@ ESP_UART_DMA_RxDoneCB(
 {
 	uart_t *psUartObj = (uart_t *)pvObj;
 	uint32_t u32TransDateByte = dma_untransfer_bytecount(psUartObj->dma_chn_id_rx);
-	
-	u32TransDateByte = (u32TransDateByte==0)? ESP_UART_DMA_RX_BUFF_SIZE: ESP_UART_DMA_RX_BUFF_SIZE-(u32TransDateByte+1); 
+
+#if 0	
+	if(u32TransDateByte == 0){
+		printf("ESP_UART_DMA_RxDoneCB \n");
+		u32TransDateByte = ESP_UART_DMA_RX_BUFF_SIZE;
+	}
+	else{
+		u32TransDateByte = ESP_UART_DMA_RX_BUFF_SIZE - (u32TransDateByte); 
+	}
+#else
+	if(i32Event & DMA_EVENT_TRANSFER_DONE){
+		u32TransDateByte = ESP_UART_DMA_RX_BUFF_SIZE;
+	}
+	else{
+		u32TransDateByte = ESP_UART_DMA_RX_BUFF_SIZE - (u32TransDateByte); 
+	}
+#endif	
 	
 	if(i32Event & DMA_EVENT_TIMEOUT){
 		//todo restart dma rx
@@ -222,7 +237,6 @@ static int configure_uart(
 	
 	s_sUARTObj.uart = (UART_T *)esp_ll_get_uart_obj();
 	esp_ll_switch_pin_fun(1);
-	esp_ll_hardreset();
 	
 	//Open UART port
 	sUARTInit.u32BaudRate = u32BaudRate;
@@ -230,15 +244,16 @@ static int configure_uart(
 	sUARTInit.u32Parity = UART_PARITY_NONE;
 	sUARTInit.u32StopBits = UART_STOP_BIT_1;
 	sUARTInit.eFlowControl = eUART_HWCONTROL_CTS | eUART_HWCONTROL_RTS;
-	
-	s_i32CurBaudRate = u32BaudRate;
 
 	if(s_bInitialized){
 		if(u32BaudRate != s_i32CurBaudRate){
 			UART_SetLineConfig(s_sUARTObj.uart, sUARTInit.u32BaudRate, sUARTInit.u32DataWidth, sUARTInit.u32Parity, sUARTInit.u32StopBits);
 		}
+		s_i32CurBaudRate = u32BaudRate;
 		return espOK;
 	}
+
+	s_i32CurBaudRate = u32BaudRate;
 
 	if(UART_Init(&s_sUARTObj, &sUARTInit, 0) != 0){
 		printf("Unable open UART port for ESP8266 module \n");
@@ -335,12 +350,11 @@ esp_ll_init(esp_ll_t* ll) {
     
     if (!s_bInitialized) {
         ll->send_fn = send_data;                /* Set callback function to send data */
-#if defined(ESP_RESET_PIN)
-//        ll->reset_fn = reset_device;            /* Set callback for hardware reset */
-#endif /* defined(ESP_RESET_PIN) */
+        ll->reset_fn = esp_ll_hardreset;            /* Set callback for hardware reset */
     }
-	
+
     configure_uart(ll->uart.baudrate);          /* Initialize UART for communication */
+
     s_bInitialized = True;
     return espOK;
 }
